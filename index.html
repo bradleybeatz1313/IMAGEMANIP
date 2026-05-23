@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMAGEMANIP - Image Processor</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 720px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            background: linear-gradient(135deg, #58a6ff, #a371f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        header p {
+            color: #8b949e;
+            margin-top: 0.25rem;
+            font-size: 0.95rem;
+        }
+
+        /* Upload zone */
+        .upload-zone {
+            border: 2px dashed #30363d;
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            background: #161b22;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #58a6ff;
+            background: #1c2333;
+        }
+        .upload-zone.has-file {
+            border-color: #3fb950;
+            border-style: solid;
+        }
+        .upload-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 1rem;
+            opacity: 0.5;
+        }
+        .upload-zone p {
+            font-size: 1rem;
+            color: #c9d1d9;
+        }
+        .upload-zone span {
+            font-size: 0.8rem;
+            color: #484f58;
+            display: block;
+            margin-top: 0.5rem;
+        }
+        .file-info {
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+            color: #3fb950;
+        }
+
+        /* Settings */
+        .settings {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1.25rem;
+            flex-wrap: wrap;
+        }
+        .setting-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        .setting-group > label {
+            display: block;
+            font-size: 0.8rem;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        select {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            background: #161b22;
+            border: 1px solid #30363d;
+            color: #e6edf3;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b949e'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+        }
+        select:focus { outline: none; border-color: #58a6ff; }
+
+        .radio-group {
+            display: flex;
+            gap: 0;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .radio-group label {
+            flex: 1;
+            text-align: center;
+            padding: 0.6rem 0.5rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            border-right: 1px solid #30363d;
+            color: #8b949e;
+        }
+        .radio-group label:last-child { border-right: none; }
+        .radio-group label:hover { background: #1c2333; color: #c9d1d9; }
+        .radio-group input { display: none; }
+        .radio-group input:checked + span {
+            color: #58a6ff;
+            font-weight: 600;
+        }
+        .radio-group label:has(input:checked) {
+            background: #1c2333;
+        }
+
+        /* Buttons */
+        .process-btn {
+            display: block;
+            width: 100%;
+            margin-top: 1.5rem;
+            padding: 0.85rem;
+            background: linear-gradient(135deg, #238636, #2ea043);
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .process-btn:hover:not(:disabled) { opacity: 0.9; }
+        .process-btn:active:not(:disabled) { transform: scale(0.99); }
+        .process-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .download-btn {
+            display: block;
+            width: 100%;
+            margin-top: 1rem;
+            padding: 0.85rem;
+            background: linear-gradient(135deg, #1f6feb, #388bfd);
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            text-decoration: none;
+            text-align: center;
+        }
+        .download-btn:hover { opacity: 0.9; }
+
+        /* Progress */
+        .progress {
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid #30363d;
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 0.75rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .progress p {
+            font-size: 0.9rem;
+            color: #8b949e;
+        }
+
+        /* Preview */
+        .preview-section {
+            margin-top: 1.5rem;
+        }
+        .preview-section h3 {
+            font-size: 0.8rem;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        .preview-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        @media (max-width: 500px) {
+            .preview-grid { grid-template-columns: 1fr; }
+        }
+        .preview-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .preview-card .label {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 1px solid #30363d;
+        }
+        .preview-card img {
+            width: 100%;
+            display: block;
+        }
+
+        /* Error */
+        .error-msg {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            background: #3d1f28;
+            border: 1px solid #f8514966;
+            border-radius: 8px;
+            color: #f85149;
+            font-size: 0.9rem;
+        }
+
+        .hidden { display: none !important; }
+
+        /* Divider */
+        .divider {
+            border: none;
+            border-top: 1px solid #21262d;
+            margin: 3rem 0 2rem;
+        }
+
+        /* API Docs */
+        .api-section h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        .api-section > p {
+            color: #8b949e;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+        .api-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            margin-bottom: 1.25rem;
+            overflow: hidden;
+        }
+        .api-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #30363d;
+            cursor: pointer;
+            user-select: none;
+        }
+        .api-card-header:hover { background: #1c2333; }
+        .method-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .method-post { background: #238636; color: #fff; }
+        .method-get { background: #1f6feb; color: #fff; }
+        .api-card-header .path {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+            font-size: 0.9rem;
+            color: #e6edf3;
+        }
+        .api-card-header .desc {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-left: auto;
+        }
+        .api-card-header .chevron {
+            color: #484f58;
+            font-size: 0.75rem;
+            transition: transform 0.2s;
+        }
+        .api-card.open .chevron { transform: rotate(90deg); }
+        .api-card-body {
+            display: none;
+            padding: 1rem;
+        }
+        .api-card.open .api-card-body { display: block; }
+
+        .param-table {
+            width: 100%;
+            font-size: 0.85rem;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        .param-table th {
+            text-align: left;
+            color: #8b949e;
+            font-weight: 500;
+            padding: 0.4rem 0.5rem;
+            border-bottom: 1px solid #21262d;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .param-table td {
+            padding: 0.5rem 0.5rem;
+            border-bottom: 1px solid #21262d;
+            vertical-align: top;
+        }
+        .param-table code {
+            background: #0d1117;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #79c0ff;
+        }
+        .param-table .required {
+            color: #f85149;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .param-table .optional {
+            color: #8b949e;
+            font-size: 0.7rem;
+        }
+
+        /* Code tabs */
+        .code-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid #30363d;
+            margin-bottom: 0;
+        }
+        .code-tab {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            color: #8b949e;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color 0.15s, border-color 0.15s;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        .code-tab:hover { color: #c9d1d9; }
+        .code-tab.active {
+            color: #58a6ff;
+            border-bottom-color: #58a6ff;
+        }
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            position: relative;
+        }
+        .code-block pre {
+            margin: 0;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #e6edf3;
+            white-space: pre;
+        }
+        .code-block .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .code-block .copy-btn:hover { color: #e6edf3; border-color: #8b949e; }
+        .code-panel { display: none; }
+        .code-panel.active { display: block; }
+
+        .response-label {
+            font-size: 0.8rem;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin: 1rem 0 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>IMAGEMANIP</h1>
+            <p>Advanced Image Processing Pipeline</p>
+        </header>
+
+        <div class="upload-zone" id="upload-zone">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+            <p>Drag &amp; drop an image or click to browse</p>
+            <span>JPG, PNG, BMP, WebP up to 20 MB</span>
+            <div class="file-info hidden" id="file-info"></div>
+            <input type="file" id="file-input" accept="image/*" hidden>
+        </div>
+
+        <div class="settings">
+            <div class="setting-group">
+                <label>Camera Profile</label>
+                <select id="camera-select">
+                    <option value="canon">Canon EOS R5</option>
+                    <option value="sony">Sony A7R IV</option>
+                    <option value="nikon">Nikon Z9</option>
+                    <option value="iphone">iPhone 14 Pro</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Intensity</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="intensity" value="low"><span>Low</span></label>
+                    <label><input type="radio" name="intensity" value="medium"><span>Medium</span></label>
+                    <label><input type="radio" name="intensity" value="high" checked><span>High</span></label>
+                </div>
+            </div>
+        </div>
+
+        <button class="process-btn" id="process-btn" disabled>Process Image</button>
+
+        <div class="progress hidden" id="progress">
+            <div class="spinner"></div>
+            <p id="progress-text">Processing...</p>
+        </div>
+
+        <div class="error-msg hidden" id="error-msg"></div>
+
+        <div class="preview-section hidden" id="preview-section">
+            <div class="preview-grid">
+                <div class="preview-card">
+                    <div class="label">Original</div>
+                    <img id="original-preview" alt="Original">
+                </div>
+                <div class="preview-card">
+                    <div class="label">Processed</div>
+                    <img id="processed-preview" alt="Processed">
+                </div>
+            </div>
+        </div>
+
+        <a class="download-btn hidden" id="download-btn">Download Processed Image</a>
+
+        <hr class="divider">
+
+        <div class="api-section">
+            <h2>API</h2>
+            <p>Integrate IMAGEMANIP into your own apps and workflows.</p>
+
+            <div class="api-card open" id="card-process">
+                <div class="api-card-header" onclick="toggleCard('card-process')">
+                    <span class="method-badge method-post">POST</span>
+                    <span class="path">/api/process</span>
+                    <span class="desc">Process an image</span>
+                    <span class="chevron">&#9654;</span>
+                </div>
+                <div class="api-card-body">
+                    <table class="param-table">
+                        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td><code>image</code> <span class="required">required</span></td>
+                                <td>string</td>
+                                <td>Base64-encoded image data (JPEG or PNG)</td>
+                            </tr>
+                            <tr>
+                                <td><code>camera</code> <span class="optional">optional</span></td>
+                                <td>string</td>
+                                <td><code>canon</code> | <code>sony</code> | <code>nikon</code> | <code>iphone</code> &mdash; default <code>canon</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>intensity</code> <span class="optional">optional</span></td>
+                                <td>string</td>
+                                <td><code>low</code> | <code>medium</code> | <code>high</code> &mdash; default <code>high</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="code-tabs">
+                        <button class="code-tab active" onclick="showTab(this,'curl')">cURL</button>
+                        <button class="code-tab" onclick="showTab(this,'python')">Python</button>
+                        <button class="code-tab" onclick="showTab(this,'javascript')">JavaScript</button>
+                    </div>
+                    <div class="code-block">
+                        <div class="code-panel active" data-lang="curl"><button class="copy-btn" onclick="copyCode(this)">Copy</button><pre>curl -X POST https://imagemanip.vercel.app/api/process \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "'$(base64 -w0 input.jpg)'",
+    "camera": "canon",
+    "intensity": "high"
+  }' | python3 -c "
+import sys, json, base64
+data = json.load(sys.stdin)
+with open('output.jpg','wb') as f:
+    f.write(base64.b64decode(data['image']))
+print('Saved to output.jpg')"</pre></div>
+                        <div class="code-panel" data-lang="python"><button class="copy-btn" onclick="copyCode(this)">Copy</button><pre>import requests, base64
+
+with open("input.jpg", "rb") as f:
+    image_b64 = base64.b64encode(f.read()).decode()
+
+response = requests.post(
+    "https://imagemanip.vercel.app/api/process",
+    json={
+        "image": image_b64,
+        "camera": "canon",
+        "intensity": "high"
+    }
+)
+
+result = response.json()
+with open("output.jpg", "wb") as f:
+    f.write(base64.b64decode(result["image"]))
+
+print("Saved to output.jpg")</pre></div>
+                        <div class="code-panel" data-lang="javascript"><button class="copy-btn" onclick="copyCode(this)">Copy</button><pre>const fs = require("fs");
+
+const imageB64 = fs.readFileSync("input.jpg")
+                    .toString("base64");
+
+const res = await fetch(
+  "https://imagemanip.vercel.app/api/process",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image: imageB64,
+      camera: "canon",
+      intensity: "high"
+    })
+  }
+);
+
+const data = await res.json();
+fs.writeFileSync(
+  "output.jpg",
+  Buffer.from(data.image, "base64")
+);
+console.log("Saved to output.jpg");</pre></div>
+                    </div>
+
+                    <div class="response-label">Response</div>
+                    <div class="code-block" style="border-radius:8px; border-top:1px solid #30363d;">
+                        <pre>{
+  "image": "/9j/4AAQSkZJRg... (base64 JPEG)"
+}</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="api-card" id="card-health">
+                <div class="api-card-header" onclick="toggleCard('card-health')">
+                    <span class="method-badge method-get">GET</span>
+                    <span class="path">/api/health</span>
+                    <span class="desc">Health check</span>
+                    <span class="chevron">&#9654;</span>
+                </div>
+                <div class="api-card-body">
+                    <div class="response-label">Response</div>
+                    <div class="code-block" style="border-radius:8px; border-top:1px solid #30363d;">
+                        <pre>{
+  "status": "ok",
+  "service": "imagemanip",
+  "version": "1.0.0",
+  "endpoints": {
+    "POST /api/process": "Process an image",
+    "GET /api/health": "Health check"
+  }
+}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const zone = $('upload-zone');
+        const input = $('file-input');
+        const processBtn = $('process-btn');
+        const progress = $('progress');
+        const progressText = $('progress-text');
+        const errorMsg = $('error-msg');
+        const previewSection = $('preview-section');
+        const originalPreview = $('original-preview');
+        const processedPreview = $('processed-preview');
+        const downloadBtn = $('download-btn');
+        const fileInfo = $('file-info');
+
+        let selectedFile = null;
+
+        // Drag-and-drop
+        zone.addEventListener('click', () => input.click());
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        input.addEventListener('change', () => { if (input.files.length) handleFile(input.files[0]); });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError('Please select an image file.');
+                return;
+            }
+            if (file.size > 20 * 1024 * 1024) {
+                showError('File too large. Maximum size is 20 MB.');
+                return;
+            }
+            selectedFile = file;
+            const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            fileInfo.textContent = `${file.name} (${sizeMB} MB)`;
+            fileInfo.classList.remove('hidden');
+            zone.classList.add('has-file');
+            processBtn.disabled = false;
+            hideError();
+            downloadBtn.classList.add('hidden');
+            previewSection.classList.add('hidden');
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.remove('hidden');
+        }
+        function hideError() { errorMsg.classList.add('hidden'); }
+
+        // Processing steps for progress display
+        const steps = [
+            'Applying frequency domain modifications...',
+            'Injecting adversarial perturbations...',
+            'Adding camera sensor noise...',
+            'Optimizing entropy characteristics...',
+            'Applying compression cycles...',
+            'Final optimization...'
+        ];
+
+        function prepareImage(file) {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => {
+                    const MAX = 2048;
+                    let w = img.width, h = img.height;
+                    if (w > MAX || h > MAX) {
+                        const ratio = Math.min(MAX / w, MAX / h);
+                        w = Math.round(w * ratio);
+                        h = Math.round(h * ratio);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                    const b64 = dataUrl.split(',')[1];
+                    resolve({ b64, previewUrl: dataUrl });
+                };
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        // API docs interactivity
+        function toggleCard(id) {
+            document.getElementById(id).classList.toggle('open');
+        }
+        function showTab(btn, lang) {
+            const block = btn.closest('.api-card-body');
+            block.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            block.querySelectorAll('.code-panel').forEach(p => {
+                p.classList.toggle('active', p.dataset.lang === lang);
+            });
+        }
+        function copyCode(btn) {
+            const text = btn.parentElement.querySelector('pre').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 1500);
+            });
+        }
+        // Expose to onclick handlers
+        window.toggleCard = toggleCard;
+        window.showTab = showTab;
+        window.copyCode = copyCode;
+
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            processBtn.disabled = true;
+            progress.classList.remove('hidden');
+            downloadBtn.classList.add('hidden');
+            previewSection.classList.add('hidden');
+            hideError();
+
+            let stepIdx = 0;
+            progressText.textContent = steps[0];
+            const stepTimer = setInterval(() => {
+                stepIdx = (stepIdx + 1) % steps.length;
+                progressText.textContent = steps[stepIdx];
+            }, 2000);
+
+            try {
+                const { b64, previewUrl } = await prepareImage(selectedFile);
+                originalPreview.src = previewUrl;
+
+                const camera = $('camera-select').value;
+                const intensity = document.querySelector('input[name="intensity"]:checked').value;
+
+                const res = await fetch('/api/process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: b64, camera, intensity })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error || 'Processing failed');
+
+                const processedUrl = 'data:image/jpeg;base64,' + data.image;
+                processedPreview.src = processedUrl;
+                previewSection.classList.remove('hidden');
+
+                // Setup download
+                const blob = await fetch(processedUrl).then(r => r.blob());
+                const blobUrl = URL.createObjectURL(blob);
+                const name = selectedFile.name.replace(/\.[^.]+$/, '') + '_processed.jpg';
+                downloadBtn.href = blobUrl;
+                downloadBtn.download = name;
+                downloadBtn.classList.remove('hidden');
+            } catch (err) {
+                showError(err.message || 'Something went wrong. Try a smaller image or lower intensity.');
+            } finally {
+                clearInterval(stepTimer);
+                progress.classList.add('hidden');
+                processBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
