@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.vercel
+node_modules
+*.mp4
+_temp_*
