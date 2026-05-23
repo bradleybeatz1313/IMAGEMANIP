@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageEnhance, ImageFilter
 from PIL.ExifTags import TAGS
+import piexif
 import random
 import math
 import io
@@ -217,8 +218,20 @@ class MetadataGenerator:
             }
         }
 
-    def generate_realistic_exif(self, image):
+    def _parse_aperture(self, aperture_str):
+        """Convert 'f/4.0' to RATIONAL tuple (40, 10)"""
+        val = float(aperture_str.replace('f/', ''))
+        return (int(val * 10), 10)
 
+    def _parse_shutter(self, shutter_str):
+        """Convert '1/125' to RATIONAL tuple (1, 125)"""
+        parts = shutter_str.split('/')
+        if len(parts) == 2:
+            return (int(parts[0]), int(parts[1]))
+        return (1, int(float(parts[0])))
+
+    def generate_exif_bytes(self, image):
+        """Generate complete realistic EXIF metadata bytes"""
         camera_key = random.choice(list(self.camera_configs.keys()))
         config = self.camera_configs[camera_key]
 
@@ -227,58 +240,47 @@ class MetadataGenerator:
         shutter = random.choice(config['shutters'])
 
         days_ago = random.randint(1, 365)
-        hours_offset = random.randint(0, 23)
-        minutes_offset = random.randint(0, 59)
-
         shoot_time = datetime.now() - timedelta(
             days=days_ago,
-            hours=hours_offset,
-            minutes=minutes_offset
+            hours=random.randint(0, 23),
+            minutes=random.randint(0, 59)
         )
+        ts = shoot_time.strftime('%Y:%m:%d %H:%M:%S')
+        focal = random.randint(24, 200)
 
-        exif_dict = {
-            'Make': config['make'],
-            'Model': config['model'],
-            'LensModel': config['lens'],
-            'Software': config['software'],
-            'DateTime': shoot_time.strftime('%Y:%m:%d %H:%M:%S'),
-            'DateTimeOriginal': shoot_time.strftime('%Y:%m:%d %H:%M:%S'),
-            'DateTimeDigitized': shoot_time.strftime('%Y:%m:%d %H:%M:%S'),
-            'ISO': str(iso),
-            'FNumber': aperture,
-            'ExposureTime': shutter,
-            'FocalLength': f"{random.randint(24, 200)}/1",
-            'WhiteBalance': random.choice(['0', '1']),  
-            'ColorSpace': '1',  
-            'ExifImageWidth': str(image.width),
-            'ExifImageHeight': str(image.height),
-            'Flash': str(random.choice([16, 24, 32])),  
-            'MeteringMode': str(random.choice([2, 3, 5])),  
-            'ExposureMode': str(random.choice([0, 1])),  
-            'SceneCaptureType': '0',  
-            'Orientation': '1'  
+        zeroth_ifd = {
+            piexif.ImageIFD.Make: config['make'].encode(),
+            piexif.ImageIFD.Model: config['model'].encode(),
+            piexif.ImageIFD.Software: config['software'].encode(),
+            piexif.ImageIFD.DateTime: ts.encode(),
+            piexif.ImageIFD.Orientation: 1,
+            piexif.ImageIFD.XResolution: (72, 1),
+            piexif.ImageIFD.YResolution: (72, 1),
+            piexif.ImageIFD.ResolutionUnit: 2,
         }
 
-        return self._embed_exif(image, exif_dict)
+        exif_ifd = {
+            piexif.ExifIFD.DateTimeOriginal: ts.encode(),
+            piexif.ExifIFD.DateTimeDigitized: ts.encode(),
+            piexif.ExifIFD.ExposureTime: self._parse_shutter(shutter),
+            piexif.ExifIFD.FNumber: self._parse_aperture(aperture),
+            piexif.ExifIFD.ISOSpeedRatings: iso,
+            piexif.ExifIFD.FocalLength: (focal, 1),
+            piexif.ExifIFD.FocalLengthIn35mmFilm: focal,
+            piexif.ExifIFD.LensMake: config['make'].encode(),
+            piexif.ExifIFD.LensModel: config['lens'].encode(),
+            piexif.ExifIFD.ColorSpace: 1,
+            piexif.ExifIFD.Flash: random.choice([16, 24, 32]),
+            piexif.ExifIFD.MeteringMode: random.choice([2, 3, 5]),
+            piexif.ExifIFD.ExposureMode: random.choice([0, 1]),
+            piexif.ExifIFD.WhiteBalance: random.choice([0, 1]),
+            piexif.ExifIFD.SceneCaptureType: 0,
+            piexif.ExifIFD.PixelXDimension: image.width,
+            piexif.ExifIFD.PixelYDimension: image.height,
+            piexif.ExifIFD.ExifVersion: b"0232",
+        }
 
-    def _embed_exif(self, image, exif_dict):
-
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-
-        buffer = io.BytesIO()
-
-        image.save(buffer, format='JPEG', quality=95, exif=self._build_exif_bytes(exif_dict))
-        buffer.seek(0)
-
-        return Image.open(buffer).copy()
-
-    def _build_exif_bytes(self, exif_dict):
-
-        exif_bytes = b''
-        for key, value in exif_dict.items():
-            exif_bytes += f"{key}:{value}\n".encode('utf-8')
-        return exif_bytes[:1000]  
+        return piexif.dump({"0th": zeroth_ifd, "Exif": exif_ifd})
 
 class AdversarialProcessor:
 
@@ -425,14 +427,14 @@ class UndetectableImageProcessor:
         cycles = {'low': 2, 'medium': 3, 'high': 4}[intensity]
         current_image = self.compressor.apply_compression_cycle(current_image, cycles)
 
-        print("[+] Generating realistic EXIF metadata...")
-        current_image = self.metadata_gen.generate_realistic_exif(current_image)
-
         print("[+] Final optimization...")
         current_image = self._final_optimization(current_image, intensity)
 
+        print("[+] Generating realistic EXIF metadata...")
+        exif_bytes = self.metadata_gen.generate_exif_bytes(current_image)
+
         print(f"[+] Saving processed image: {output_path}")
-        current_image.save(output_path, quality=95, optimize=True)
+        current_image.save(output_path, quality=95, exif=exif_bytes)
 
         print("[+] Validating evasion effectiveness...")
         self._validate_result(current_image, original_image)

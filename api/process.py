@@ -5,6 +5,8 @@ import io
 import numpy as np
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image, ImageEnhance
+from datetime import datetime, timedelta
+import piexif
 import random
 
 MAX_DIM = 2048
@@ -160,6 +162,95 @@ class EntropyManager:
         return np.clip(r, 0, 255).astype(np.uint8)
 
 
+class MetadataGenerator:
+    CAMERAS = {
+        "canon": {
+            "make": "Canon",
+            "model": "Canon EOS R5",
+            "lens": "RF24-105mm f/4L IS USM",
+            "software": "Adobe Photoshop Lightroom Classic 12.0 (Windows)",
+            "iso": [100, 200, 400, 800, 1600, 3200],
+            "apertures": [(40, 10), (56, 10), (80, 10), (110, 10)],
+            "shutters": [(1, 60), (1, 125), (1, 250), (1, 500), (1, 1000)],
+            "focal": (24, 105),
+        },
+        "sony": {
+            "make": "SONY",
+            "model": "ILCE-7RM4",
+            "lens": "FE 24-70mm F2.8 GM",
+            "software": "Adobe Photoshop Lightroom Classic 12.0 (Windows)",
+            "iso": [100, 200, 400, 800, 1600],
+            "apertures": [(28, 10), (40, 10), (56, 10), (80, 10)],
+            "shutters": [(1, 80), (1, 160), (1, 320), (1, 640)],
+            "focal": (24, 70),
+        },
+        "nikon": {
+            "make": "NIKON CORPORATION",
+            "model": "NIKON Z 9",
+            "lens": "NIKKOR Z 24-70mm f/2.8 S",
+            "software": "Adobe Photoshop Lightroom Classic 12.0 (Windows)",
+            "iso": [64, 100, 200, 400, 800, 1600],
+            "apertures": [(28, 10), (40, 10), (56, 10), (80, 10)],
+            "shutters": [(1, 100), (1, 200), (1, 400), (1, 800)],
+            "focal": (24, 70),
+        },
+        "iphone": {
+            "make": "Apple",
+            "model": "iPhone 14 Pro",
+            "lens": "iPhone 14 Pro back triple camera 6.86mm f/1.78",
+            "software": "16.6.1",
+            "iso": [32, 64, 100, 200, 400, 800],
+            "apertures": [(178, 100), (280, 100)],
+            "shutters": [(1, 30), (1, 60), (1, 121), (1, 244)],
+            "focal": (2, 9),
+        },
+    }
+
+    def build_exif_bytes(self, image, camera="canon"):
+        cfg = self.CAMERAS.get(camera, self.CAMERAS["canon"])
+
+        days_ago = random.randint(1, 365)
+        dt = datetime.now() - timedelta(
+            days=days_ago, hours=random.randint(0, 23), minutes=random.randint(0, 59)
+        )
+        ts = dt.strftime("%Y:%m:%d %H:%M:%S")
+
+        zeroth = {
+            piexif.ImageIFD.Make: cfg["make"].encode(),
+            piexif.ImageIFD.Model: cfg["model"].encode(),
+            piexif.ImageIFD.Software: cfg["software"].encode(),
+            piexif.ImageIFD.DateTime: ts.encode(),
+            piexif.ImageIFD.Orientation: 1,
+            piexif.ImageIFD.XResolution: (72, 1),
+            piexif.ImageIFD.YResolution: (72, 1),
+            piexif.ImageIFD.ResolutionUnit: 2,
+        }
+
+        focal = random.randint(*cfg["focal"])
+        exif = {
+            piexif.ExifIFD.DateTimeOriginal: ts.encode(),
+            piexif.ExifIFD.DateTimeDigitized: ts.encode(),
+            piexif.ExifIFD.ExposureTime: random.choice(cfg["shutters"]),
+            piexif.ExifIFD.FNumber: random.choice(cfg["apertures"]),
+            piexif.ExifIFD.ISOSpeedRatings: random.choice(cfg["iso"]),
+            piexif.ExifIFD.FocalLength: (focal, 1),
+            piexif.ExifIFD.FocalLengthIn35mmFilm: focal,
+            piexif.ExifIFD.LensMake: cfg["make"].encode(),
+            piexif.ExifIFD.LensModel: cfg["lens"].encode(),
+            piexif.ExifIFD.ColorSpace: 1,
+            piexif.ExifIFD.Flash: random.choice([16, 24, 32]),
+            piexif.ExifIFD.MeteringMode: random.choice([2, 3, 5]),
+            piexif.ExifIFD.ExposureMode: random.choice([0, 1]),
+            piexif.ExifIFD.WhiteBalance: random.choice([0, 1]),
+            piexif.ExifIFD.SceneCaptureType: 0,
+            piexif.ExifIFD.PixelXDimension: image.width,
+            piexif.ExifIFD.PixelYDimension: image.height,
+            piexif.ExifIFD.ExifVersion: b"0232",
+        }
+
+        return piexif.dump({"0th": zeroth, "Exif": exif})
+
+
 class ImageProcessor:
     def __init__(self):
         self.freq = FrequencyDomainProcessor()
@@ -167,6 +258,7 @@ class ImageProcessor:
         self.compress = CompressionProcessor()
         self.adversarial = AdversarialProcessor()
         self.entropy = EntropyManager()
+        self.metadata = MetadataGenerator()
 
     def process(self, image, intensity="high", camera="canon"):
         arr = np.array(image)
@@ -204,12 +296,13 @@ class handler(BaseHTTPRequestHandler):
                 image = image.convert("RGB")
             image = _resize(image)
 
-            result = ImageProcessor().process(
-                image, body.get("intensity", "high"), body.get("camera", "canon")
-            )
+            camera = body.get("camera", "canon")
+            processor = ImageProcessor()
+            result = processor.process(image, body.get("intensity", "high"), camera)
 
+            exif_bytes = processor.metadata.build_exif_bytes(result, camera)
             buf = io.BytesIO()
-            result.save(buf, format="JPEG", quality=95, optimize=True)
+            result.save(buf, format="JPEG", quality=95, exif=exif_bytes)
             out_b64 = base64.b64encode(buf.getvalue()).decode()
 
             self.send_response(200)
