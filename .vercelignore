@@ -1,0 +1,6 @@
+IMAGEMANIP.py
+VIDEOMANIP.py
+*.png
+*.mp4
+*.pyc
+__pycache__
